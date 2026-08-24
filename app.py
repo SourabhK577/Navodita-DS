@@ -8,7 +8,7 @@ st.set_page_config(
     page_title="MovieRecom - Recommendation Engine",
     page_icon="🎬",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 def local_css(file_name):
@@ -35,91 +35,98 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-st.sidebar.image("https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=300&auto=format&fit=crop", use_container_width=True)
-st.sidebar.markdown("### ⚙️ Engine Settings")
+st.markdown("### ⚙️ Recommendation Preferences")
 
-input_mode = st.sidebar.radio(
-    "🎯 Recommendation Mode",
-    ["🍿 Custom Profile (Select Movies)", "👤 Preset User Profile"]
+input_mode = st.radio(
+    "Choose Input Method",
+    ["🍿 Custom Profile (Select Movies)", "👤 Preset User Profile"],
+    horizontal=True
 )
 
 movie_titles = recommender.movies['title'].sort_values().tolist()
 
-if input_mode == "👤 Preset User Profile":
-    user_ids = sorted(recommender.ratings['userId'].unique())
-    selected_user = st.sidebar.selectbox("Select Target User ID", user_ids, index=0)
-    user_ratings = recommender.ratings[recommender.ratings['userId'] == selected_user]
-    st.sidebar.markdown(f"**Ratings Submitted:** `{len(user_ratings)}`")
-    st.sidebar.markdown(f"**Average Rating:** `{user_ratings['rating'].mean():.2f} ★`")
-else:
-    st.sidebar.markdown("### 🔍 Movies You Love")
-    st.sidebar.markdown("Search and select up to 5 movies you love. We'll give you recommendations based on these choices!")
-    
+if input_mode == "🍿 Custom Profile (Select Movies)":
     default_selections = []
     for default_title in ["Toy Story (1995)", "Matrix, The (1999)", "Pulp Fiction (1994)", "Forrest Gump (1994)", "Shawshank Redemption, The (1994)"]:
         if default_title in movie_titles:
             default_selections.append(default_title)
             
-    chosen_movies = st.sidebar.multiselect(
-        "Select up to 5 movies:",
+    chosen_movies = st.multiselect(
+        "Search and select up to 5 movies you love:",
         movie_titles,
         default=default_selections[:5],
         max_selections=5
     )
-
-st.markdown("### 🍿 Recommended Movies for You")
-
-if input_mode == "🍿 Custom Profile (Select Movies)":
-    st.markdown("These suggestions are generated via **User-Based Collaborative Filtering** by finding other users who also highly rated your favorite movies.")
     
-    num_recs = st.slider("Number of recommendations to generate", 3, 20, 8, key="num_recs_slider_custom")
-    
+    col_slider, col_btn = st.columns([3, 1])
+    with col_slider:
+        num_recs = st.slider("Number of recommendations to generate", 3, 20, 8, key="num_recs_slider_custom")
+    with col_btn:
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+        generate_clicked = st.button("🚀 Generate Recommendations", type="primary", key="btn_custom")
+
     if len(chosen_movies) == 0:
-        st.warning("⚠️ Please select at least one movie in the sidebar to generate recommendations.")
-    else:
-        if st.button("🚀 Generate Recommendations", type="primary"):
-            custom_ratings = {}
-            for title in chosen_movies:
-                m_row = recommender.movies[recommender.movies['title'] == title]
-                if not m_row.empty:
-                    m_id = m_row.iloc[0]['movieId']
-                    custom_ratings[m_id] = 5.0
-                
-            with st.spinner("Analyzing ratings and similarity vectors..."):
-                recs = recommender.get_custom_user_recommendations(custom_ratings, num_recs)
-                
-            if recs.empty:
-                st.warning("No custom recommendations could be generated. Showing popular movies.")
-                recs = recommender.get_popular_movies(num_recs)
-                
-            cols = st.columns(4)
-            for idx, row in recs.reset_index(drop=True).iterrows():
-                col_idx = idx % 4
-                genres_list = row['genres'].split('|')
-                genres_html = "".join([f'<span class="movie-genre-badge">{g}</span>' for g in genres_list])
-                
-                pred_rating = row.get('predicted_rating', 0.0)
-                star_rating = "★" * int(round(pred_rating)) + "☆" * (5 - int(round(pred_rating)))
-                
-                with cols[col_idx]:
-                    st.markdown(f"""
-                    <div class="movie-card">
-                        <div>
-                            <div class="movie-title">{row['title']}</div>
-                            <div class="movie-genres-container">{genres_html}</div>
-                        </div>
-                        <div class="rating-container">
-                            <span class="rating-stars">{star_rating}</span>
-                            <span class="rating-val">{pred_rating:.2f}/5</span>
-                        </div>
+        st.warning("⚠️ Please select at least one movie to generate recommendations.")
+    elif generate_clicked:
+        custom_ratings = {}
+        for title in chosen_movies:
+            m_row = recommender.movies[recommender.movies['title'] == title]
+            if not m_row.empty:
+                m_id = m_row.iloc[0]['movieId']
+                custom_ratings[m_id] = 5.0
+            
+        with st.spinner("Analyzing ratings and similarity vectors..."):
+            recs = recommender.get_custom_user_recommendations(custom_ratings, num_recs)
+            
+        if recs.empty:
+            st.warning("No custom recommendations could be generated. Showing popular movies.")
+            recs = recommender.get_popular_movies(num_recs)
+            
+        st.markdown("---")
+        st.markdown("### 🍿 Recommended Movies for You")
+        cols = st.columns(4)
+        for idx, row in recs.reset_index(drop=True).iterrows():
+            col_idx = idx % 4
+            genres_list = row['genres'].split('|')
+            genres_html = "".join([f'<span class="movie-genre-badge">{g}</span>' for g in genres_list])
+            
+            pred_rating = row.get('predicted_rating', 0.0)
+            star_rating = "★" * int(round(pred_rating)) + "☆" * (5 - int(round(pred_rating)))
+            
+            with cols[col_idx]:
+                st.markdown(f"""
+                <div class="movie-card">
+                    <div>
+                        <div class="movie-title">{row['title']}</div>
+                        <div class="movie-genres-container">{genres_html}</div>
                     </div>
-                    """, unsafe_allow_html=True)
+                    <div class="rating-container">
+                        <span class="rating-stars">{star_rating}</span>
+                        <span class="rating-val">{pred_rating:.2f}/5</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
 else:
-    st.markdown("These suggestions are generated via **User-Based Collaborative Filtering** by analyzing users with similar rating patterns to you.")
+    user_ids = sorted(recommender.ratings['userId'].unique())
     
-    num_recs = st.slider("Number of recommendations to generate", 3, 20, 8, key="num_recs_slider_preset")
-    
-    if st.button("🚀 Generate Recommendations", type="primary"):
+    col_select, col_stat1, col_stat2 = st.columns([2, 1, 1])
+    with col_select:
+        selected_user = st.selectbox("Select Target User ID", user_ids, index=0)
+        user_ratings = recommender.ratings[recommender.ratings['userId'] == selected_user]
+    with col_stat1:
+        st.metric("Ratings Submitted", f"{len(user_ratings)}")
+    with col_stat2:
+        st.metric("Average Rating", f"{user_ratings['rating'].mean():.2f} ★")
+
+    col_slider, col_btn = st.columns([3, 1])
+    with col_slider:
+        num_recs = st.slider("Number of recommendations to generate", 3, 20, 8, key="num_recs_slider_preset")
+    with col_btn:
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+        generate_clicked = st.button("🚀 Generate Recommendations", type="primary", key="btn_preset")
+
+    if generate_clicked:
         with st.spinner("Analyzing similarities..."):
             recs = recommender.get_user_recommendations(selected_user, num_recs)
             
@@ -127,6 +134,8 @@ else:
             st.warning("No recommendations found. Showing popular movies instead.")
             recs = recommender.get_popular_movies(num_recs)
             
+        st.markdown("---")
+        st.markdown("### 🍿 Recommended Movies for You")
         cols = st.columns(4)
         for idx, row in recs.reset_index(drop=True).iterrows():
             col_idx = idx % 4
@@ -150,13 +159,13 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
                 
-    st.markdown("---")
-    st.markdown("#### 📜 Movies Already Rated by this User")
-    user_top_movies = user_ratings.merge(recommender.movies, on='movieId').sort_values(by='rating', ascending=False).head(10)
-    st.dataframe(
-        user_top_movies[['title', 'genres', 'rating']].rename(
-            columns={'title': 'Movie Title', 'genres': 'Genres', 'rating': 'User Rating'}
-        ),
-        use_container_width=True,
-        hide_index=True
-    )
+        st.markdown("---")
+        st.markdown("#### 📜 Movies Already Rated by this User")
+        user_top_movies = user_ratings.merge(recommender.movies, on='movieId').sort_values(by='rating', ascending=False).head(10)
+        st.dataframe(
+            user_top_movies[['title', 'genres', 'rating']].rename(
+                columns={'title': 'Movie Title', 'genres': 'Genres', 'rating': 'User Rating'}
+            ),
+            use_container_width=True,
+            hide_index=True
+        )
